@@ -50,6 +50,8 @@
     "aka2026omdnuu",
     "aka2026omfmfh",
     "aka2026omfppb",
+    "ci10246294",
+    "ci10246302",
     "ci40659090",
     "ci40659114",
     "ci40659122",
@@ -121,6 +123,7 @@
     "ci40660178",
     "ci40660194",
     "ci40660218",
+    "ci40660250",
     "emsc-20260721_0000363",
     "emsc-20260721_0000364",
     "emsc-20260721_0000367",
@@ -328,6 +331,8 @@
     "hv75006962",
     "hv75006972",
     "hv75007062",
+    "hv75007087",
+    "hv75007092",
     "nc75403347",
     "nc75403402",
     "nc75403417",
@@ -474,12 +479,15 @@
     "tx2026ojsoue",
     "tx2026ojsqpr",
     "tx2026ojssoj",
+    "tx2026ojsxje",
     "tx2026ojukrf",
     "tx2026ojvaen",
     "tx2026ojvbtn",
     "tx2026ojvbxt",
     "tx2026ojvdpq",
     "tx2026ojvogo",
+    "tx2026ojypzj",
+    "tx2026ojysxv",
     "us7000t2c9",
     "us7000t2cl",
     "us7000t2dd",
@@ -547,6 +555,7 @@
     "uu80146091",
     "uu80146096",
     "uu80146101",
+    "uu80146131",
     "uw714056522",
     "uw714056602",
     "uw714056672",
@@ -558,7 +567,9 @@
     "uw714057692",
     "uw714057782",
     "uw714057842",
-    "uw714057992"
+    "uw714057992",
+    "uw714058042",
+    "uw714058642"
   ],
   "digest_pending": [
     {
@@ -568,6 +579,46 @@
     {
       "mag": 1.9,
       "place": "61 km N of Petersville, Alaska"
+    },
+    {
+      "mag": 1.71,
+      "place": "6 km S of P\u0101hala, Hawaii"
+    },
+    {
+      "mag": 1.22,
+      "place": "5 km NNW of Lake Elsinore, CA"
+    },
+    {
+      "mag": 2.2,
+      "place": "34 km SSE of Malaga, New Mexico"
+    },
+    {
+      "mag": 2.29,
+      "place": "22 km SE of P\u0101hala, Hawaii"
+    },
+    {
+      "mag": 1.39,
+      "place": "2 km SE of Beaver, Utah"
+    },
+    {
+      "mag": 1.5,
+      "place": "34 km SSE of Malaga, New Mexico"
+    },
+    {
+      "mag": 1.53,
+      "place": "7 km NNE of Imperial, CA"
+    },
+    {
+      "mag": 2.02,
+      "place": "8 km S of Brawley, CA"
+    },
+    {
+      "mag": 1.52999997,
+      "place": "40 km NE of Amboy, Washington"
+    },
+    {
+      "mag": 2.14093887805939,
+      "place": "5 km WSW of Yacolt, Washington"
     }
   ],
   "last_digest_date": "2026-07-23"
