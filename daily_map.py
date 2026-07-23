@@ -18,6 +18,22 @@ import notify
 MIN_MAGNITUDE = 1.0
 LOCAL_TZ = ZoneInfo("America/New_York")
 
+# Rough bounding boxes for regions with well-documented oil/gas
+# wastewater-injection-induced seismicity. This is a location heuristic,
+# not real attribution (that requires well-level injection data this
+# script doesn't have) -- see TexNet (catalog.texnet.beg.utexas.edu) and
+# the Oklahoma Corporation Commission for the real thing.
+INDUCED_HOTSPOTS = [
+    # (min_lat, max_lat, min_lon, max_lon)
+    (30.5, 33.5, -104.5, -101.0),  # Permian Basin, West TX / SE NM
+    (33.6, 37.0, -103.0, -94.4),   # Oklahoma
+    (36.9, 38.5, -99.5, -97.0),    # South-central Kansas
+]
+
+
+def is_possibly_induced(lat, lon):
+    return any(min_lat <= lat <= max_lat and min_lon <= lon <= max_lon for min_lat, max_lat, min_lon, max_lon in INDUCED_HOTSPOTS)
+
 QUAKE_FEED_URL = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/1.0_day.geojson"
 VOLCANO_FEED_URL = "https://volcanoes.usgs.gov/hans-public/api/volcano/getElevatedVolcanoes"
 VOLCANO_DETAIL_URL = "https://volcanoes.usgs.gov/hans-public/api/volcano/getVolcano/{vnum}"
@@ -48,7 +64,7 @@ def fetch_quakes(since_utc):
         if quake_time < since_utc:
             continue
         lon, lat, *_ = feature["geometry"]["coordinates"]
-        quakes.append({"mag": mag, "place": props["place"], "lat": lat, "lon": lon})
+        quakes.append({"mag": mag, "place": props["place"], "lat": lat, "lon": lon, "possibly_induced": is_possibly_induced(lat, lon)})
 
     # EMSC fills in small Europe/Mediterranean quakes USGS misses. A
     # handful of larger events may appear in both sources and plot as
@@ -58,7 +74,7 @@ def fetch_quakes(since_utc):
         quake_time = datetime.fromtimestamp(q["time"] / 1000, tz=timezone.utc)
         if quake_time < since_utc:
             continue
-        quakes.append({"mag": q["mag"], "place": q["place"], "lat": q["lat"], "lon": q["lon"]})
+        quakes.append({"mag": q["mag"], "place": q["place"], "lat": q["lat"], "lon": q["lon"], "possibly_induced": is_possibly_induced(q["lat"], q["lon"])})
 
     return quakes
 
@@ -87,22 +103,40 @@ def fetch_volcanoes():
 def build_map(quakes, volcanoes):
     fig = go.Figure()
 
-    if quakes:
+    natural = [q for q in quakes if not q["possibly_induced"]]
+    induced = [q for q in quakes if q["possibly_induced"]]
+
+    if natural:
         fig.add_trace(go.Scattergeo(
-            lat=[q["lat"] for q in quakes],
-            lon=[q["lon"] for q in quakes],
-            text=[f"M{q['mag']} - {q['place']}" for q in quakes],
+            lat=[q["lat"] for q in natural],
+            lon=[q["lon"] for q in natural],
+            text=[f"M{q['mag']} - {q['place']}" for q in natural],
             hoverinfo="text",
             mode="markers",
             marker=dict(
-                size=[max(4, q["mag"] * 3) for q in quakes],
-                color=[q["mag"] for q in quakes],
+                size=[max(4, q["mag"] * 3) for q in natural],
+                color=[q["mag"] for q in natural],
                 colorscale="YlOrRd",
                 showscale=True,
                 colorbar=dict(title="Magnitude", x=1.0),
                 line=dict(width=0.5, color="black"),
             ),
             name="Earthquakes (today)",
+        ))
+
+    if induced:
+        fig.add_trace(go.Scattergeo(
+            lat=[q["lat"] for q in induced],
+            lon=[q["lon"] for q in induced],
+            text=[f"M{q['mag']} - {q['place']} (possibly induced -- TX/OK/KS hotspot)" for q in induced],
+            hoverinfo="text",
+            mode="markers",
+            marker=dict(
+                size=[max(4, q["mag"] * 3) for q in induced],
+                color="black",
+                line=dict(width=0.5, color="black"),
+            ),
+            name="Possibly induced (TX/OK/KS)",
         ))
 
     if volcanoes:
@@ -138,7 +172,8 @@ def main():
     fig = build_map(quakes, volcanoes)
     fig.write_image(str(MAP_FILE), width=1400, height=800, scale=2)
 
-    message = f"{len(quakes)} quakes (M{MIN_MAGNITUDE}+) and {len(volcanoes)} elevated volcanoes since midnight."
+    induced_count = sum(1 for q in quakes if q["possibly_induced"])
+    message = f"{len(quakes)} quakes (M{MIN_MAGNITUDE}+, {induced_count} possibly induced) and {len(volcanoes)} elevated volcanoes since midnight."
     notify.send_file("Daily hazard map", message, MAP_FILE)
     print(f"Saved {MAP_FILE} and sent. {len(quakes)} quakes, {len(volcanoes)} volcanoes plotted.")
 
