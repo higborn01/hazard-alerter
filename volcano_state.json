@@ -1,0 +1,27 @@
+{
+  "311120": {
+    "name": "Great Sitkin",
+    "color": "ORANGE",
+    "level": "WATCH"
+  },
+  "312060": {
+    "name": "Kupreanof",
+    "color": "YELLOW",
+    "level": "ADVISORY"
+  },
+  "311360": {
+    "name": "Shishaldin",
+    "color": "YELLOW",
+    "level": "ADVISORY"
+  },
+  "332010": {
+    "name": "Kilauea",
+    "color": "YELLOW",
+    "level": "ADVISORY"
+  },
+  "284141": {
+    "name": "Ahyi Seamount",
+    "color": "YELLOW",
+    "level": "ADVISORY"
+  }
+}
