@@ -1,23 +1,17 @@
-"""Fetch recent earthquakes from USGS + EMSC and push them to a phone
-via ntfy.sh.
+"""Fetch recent earthquakes from USGS + EMSC and push a single
+consolidated notification via ntfy.sh for anything new at or above
+MAGNITUDE_THRESHOLD.
 
 Single-shot script: fetch -> filter -> notify -> save-state -> exit.
-No loop in here on purpose -- run it by hand to test, then schedule it
-with Task Scheduler / cron.
+Runs every 3 hours via GitHub Actions. Dedup is id-based (quake_state.json,
+committed back to the repo by the workflow), so "new" means "not seen in
+any previous run" -- effectively "since the last notification."
 
 Two sources:
-  - USGS: reliable globally, but under-reports small (M1-3) quakes
-    outside the US.
+  - USGS: reliable globally, but under-reports small quakes outside the US.
   - EMSC (emsc.py): fills that gap for Europe/the Mediterranean only.
-
-Notification policy:
-  - Any quake >= IMMEDIATE_ALERT_MAGNITUDE notifies right away, every run.
-  - Everything else (down to MIN_MAGNITUDE) is queued and rolled up into
-    ONE digest notification per calendar day, so small/frequent quakes
-    don't spam the phone but still get reported.
 """
 import json
-from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
@@ -25,10 +19,9 @@ import requests
 import emsc
 import notify
 
-MIN_MAGNITUDE = 1.0
-IMMEDIATE_ALERT_MAGNITUDE = 3.5
+MAGNITUDE_THRESHOLD = 3.0
 
-# 1.0_day.geojson = USGS "M1.0+, past day" feed.
+# 1.0_day.geojson = USGS "M1.0+, past day" feed (comfortably covers M3+).
 USGS_FEED_URL = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/1.0_day.geojson"
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -37,7 +30,7 @@ STATE_FILE = SCRIPT_DIR / "quake_state.json"
 
 def load_state():
     if not STATE_FILE.exists():
-        return {"seen_ids": [], "digest_pending": [], "last_digest_date": None}
+        return {"seen_ids": []}
     with open(STATE_FILE) as f:
         return json.load(f)
 
@@ -56,75 +49,45 @@ def fetch_usgs_quakes():
         mag = props["mag"]
         if mag is None:
             continue
-        lon, lat, *_ = feature["geometry"]["coordinates"]
-        quakes.append({
-            "id": feature["id"],
-            "mag": mag,
-            "place": props["place"],
-            "time": props["time"],
-            "url": props["url"],
-            "lat": lat,
-            "lon": lon,
-        })
+        quakes.append({"id": feature["id"], "mag": mag, "place": props["place"]})
     return quakes
 
 
-def format_time(time_ms):
-    return datetime.fromtimestamp(time_ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-
-
-def notify_immediate(quake):
-    when = format_time(quake["time"])
-    message = f"M{quake['mag']} - {quake['place']}\n{when}\n{quake['url']}"
-    notify.send(f"Earthquake M{quake['mag']}", message, priority="high")
-    print(f"Immediate notify: {quake['id']} M{quake['mag']} {quake['place']}")
-
-
-def send_digest(pending, today):
-    pending_sorted = sorted(pending, key=lambda q: q["mag"], reverse=True)
-    lines = [f"{len(pending)} quake(s) M{MIN_MAGNITUDE}-{IMMEDIATE_ALERT_MAGNITUDE} in the last day:"]
-    for q in pending_sorted[:15]:
-        lines.append(f"M{q['mag']} - {q['place']}")
-    if len(pending_sorted) > 15:
-        lines.append(f"...and {len(pending_sorted) - 15} more")
-    notify.send(f"Daily quake digest ({today})", "\n".join(lines))
-    print(f"Digest sent: {len(pending)} quakes")
-
-
-def process_quake(quake, seen_ids, digest_pending):
+def process_quake(quake, seen_ids, matched):
     if quake["id"] in seen_ids:
         return
-    if quake["mag"] < MIN_MAGNITUDE:
+    if quake["mag"] < MAGNITUDE_THRESHOLD:
         return
-
     seen_ids.add(quake["id"])
-    if quake["mag"] >= IMMEDIATE_ALERT_MAGNITUDE:
-        notify_immediate(quake)
-    else:
-        digest_pending.append({"mag": quake["mag"], "place": quake["place"]})
+    matched.append(quake)
+
+
+def send_notification(matched):
+    matched_sorted = sorted(matched, key=lambda q: q["mag"], reverse=True)
+    lines = [f"{len(matched)} quake(s) M{MAGNITUDE_THRESHOLD}+ since the last check:"]
+    for q in matched_sorted:
+        lines.append(f"M{q['mag']} - {q['place']}")
+    notify.send(f"Earthquake update ({len(matched)})", "\n".join(lines), priority="high")
+    print(f"Notified: {len(matched)} quakes")
 
 
 def main():
     state = load_state()
     seen_ids = set(state["seen_ids"])
-    digest_pending = state["digest_pending"]
+    matched = []
 
     for quake in fetch_usgs_quakes():
-        process_quake(quake, seen_ids, digest_pending)
+        process_quake(quake, seen_ids, matched)
 
-    for quake in emsc.fetch_quakes(MIN_MAGNITUDE):
-        process_quake(quake, seen_ids, digest_pending)
+    for quake in emsc.fetch_quakes(MAGNITUDE_THRESHOLD):
+        process_quake(quake, seen_ids, matched)
 
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    if digest_pending and state["last_digest_date"] != today:
-        send_digest(digest_pending, today)
-        digest_pending = []
-        state["last_digest_date"] = today
+    if matched:
+        send_notification(matched)
 
     state["seen_ids"] = sorted(seen_ids)
-    state["digest_pending"] = digest_pending
     save_state(state)
-    print(f"Done. {len(seen_ids)} ids tracked, {len(digest_pending)} pending for next digest.")
+    print(f"Done. {len(seen_ids)} ids tracked, {len(matched)} new this run.")
 
 
 if __name__ == "__main__":

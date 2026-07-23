@@ -2,3 +2,4 @@ requests
 plotly
 kaleido
 Pillow
+tzdata

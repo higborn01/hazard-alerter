@@ -2,8 +2,9 @@ name: Daily Hazard Map
 
 on:
   schedule:
-    # ~00:10 US Eastern (drifts to 00:10/23:10 across DST changes)
-    - cron: "10 4 * * *"
+    # ~7:05 AM US Eastern, just after the forecast (11:00 UTC). Drifts
+    # to 6/7 AM across DST changes, same as daily_forecast.yml.
+    - cron: "5 11 * * *"
   workflow_dispatch: {}
 
 jobs:
