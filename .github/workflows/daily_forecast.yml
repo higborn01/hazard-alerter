@@ -6,6 +6,9 @@ on:
     - cron: "0 11 * * *"
   workflow_dispatch: {}
 
+permissions:
+  contents: write
+
 jobs:
   run:
     runs-on: ubuntu-latest
@@ -18,3 +21,14 @@ jobs:
       - run: python daily_forecast.py
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+      # Only when manually triggered (the iPhone Shortcut) -- not on the
+      # 7am cron schedule, which already gets its own since-midnight map
+      # from daily_map.yml. Keeps the automatic morning notifications
+      # unchanged while making the one-tap button also send a 24h map.
+      - name: Also send a 24h earthquake map (manual trigger only)
+        if: github.event_name == 'workflow_dispatch'
+        run: python daily_map.py
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          MAP_SINCE_HOURS: "24"
+          MAP_OUTPUT_NAME: "map_24h.png"
