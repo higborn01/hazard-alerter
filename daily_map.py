@@ -8,7 +8,7 @@ state, it's just a snapshot report of "today so far."
 import os
 import subprocess
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -43,18 +43,33 @@ VOLCANO_DETAIL_URL = "https://volcanoes.usgs.gov/hans-public/api/volcano/getVolc
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DOCS_DIR = SCRIPT_DIR / "docs"
-MAP_FILE = DOCS_DIR / "daily_map.png"
+
+# MAP_OUTPUT_NAME/MAP_SINCE_HOURS let the same script serve two modes:
+#   - scheduled run (no env vars): daily_map.png, since local midnight
+#   - on-demand run (MAP_SINCE_HOURS=24, MAP_OUTPUT_NAME=map_24h.png):
+#     a rolling 24h window, triggered manually (e.g. from an iPhone
+#     Shortcut hitting this workflow's workflow_dispatch trigger)
+OUTPUT_NAME = os.environ.get("MAP_OUTPUT_NAME", "daily_map.png")
+MAP_FILE = DOCS_DIR / OUTPUT_NAME
 # GitHub Pages, serving the docs/ folder of this repo -- gives the map
 # a permanent URL instead of ntfy's upload path, which expires after 3h.
-MAP_PAGES_URL = "https://higborn01.github.io/hazard-alerter/daily_map.png"
+MAP_PAGES_URL = f"https://higborn01.github.io/hazard-alerter/{OUTPUT_NAME}"
 
 VOLCANO_MARKER_COLOR = {"GREEN": "green", "YELLOW": "gold", "ORANGE": "orange", "RED": "red"}
 
 
-def local_midnight_utc():
+def compute_since_utc():
+    """Returns (since_utc, label). label describes the window in the
+    message/title -- "since midnight" for the scheduled run, or
+    "last Nh" for an on-demand rolling window."""
+    since_hours = os.environ.get("MAP_SINCE_HOURS")
+    if since_hours:
+        hours = float(since_hours)
+        return datetime.now(timezone.utc) - timedelta(hours=hours), f"last {since_hours}h"
+
     now_local = datetime.now(LOCAL_TZ)
     midnight_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
-    return midnight_local.astimezone(timezone.utc)
+    return midnight_local.astimezone(timezone.utc), "since midnight"
 
 
 def fetch_quakes(since_utc):
@@ -107,7 +122,7 @@ def fetch_volcanoes():
     return volcanoes
 
 
-def build_map(quakes, volcanoes):
+def build_map(quakes, volcanoes, label):
     fig = go.Figure()
 
     natural = [q for q in quakes if not q["possibly_induced"]]
@@ -128,7 +143,7 @@ def build_map(quakes, volcanoes):
                 colorbar=dict(title="Magnitude", x=1.0),
                 line=dict(width=0.5, color="black"),
             ),
-            name="Earthquakes (today)",
+            name=f"Earthquakes ({label})",
         ))
 
     if induced:
@@ -164,7 +179,7 @@ def build_map(quakes, volcanoes):
 
     fig.update_geos(showcountries=True, showcoastlines=True, showland=True, landcolor="rgb(235,235,235)")
     fig.update_layout(
-        title="Today's hazard map",
+        title=f"Hazard map ({label})",
         margin=dict(l=0, r=0, t=40, b=0),
         legend=dict(orientation="h", y=-0.05),
     )
@@ -207,27 +222,28 @@ def wait_until_live(url, timeout=90):
 
 
 def main():
-    since_utc = local_midnight_utc()
+    since_utc, label = compute_since_utc()
     quakes = fetch_quakes(since_utc)
     volcanoes = fetch_volcanoes()
 
-    fig = build_map(quakes, volcanoes)
+    fig = build_map(quakes, volcanoes, label)
     DOCS_DIR.mkdir(exist_ok=True)
     fig.write_image(str(MAP_FILE), width=1400, height=800, scale=2)
 
     commit_and_push_map()
 
     # Cache-bust the query string so phones/ntfy don't show a stale
-    # cached copy of yesterday's image at this same URL.
-    cache_busted_url = f"{MAP_PAGES_URL}?t={int(since_utc.timestamp())}"
+    # cached copy of the previous image at this same URL.
+    cache_busted_url = f"{MAP_PAGES_URL}?t={int(datetime.now(timezone.utc).timestamp())}"
     if not wait_until_live(MAP_PAGES_URL):
         print("Warning: Pages didn't confirm the new image within the timeout; notifying anyway.")
     else:
         print("Confirmed the map is live on GitHub Pages.")
 
     induced_count = sum(1 for q in quakes if q["possibly_induced"])
-    message = f"{len(quakes)} quakes (M{MIN_MAGNITUDE}+, {induced_count} possibly induced) and {len(volcanoes)} elevated volcanoes since midnight."
-    notify.send_url_attachment("Daily hazard map", message, cache_busted_url, "daily_map.png")
+    message = f"{len(quakes)} quakes (M{MIN_MAGNITUDE}+, {induced_count} possibly induced) and {len(volcanoes)} elevated volcanoes {label}."
+    title = "Daily hazard map" if label == "since midnight" else f"Earthquake map ({label})"
+    notify.send_url_attachment(title, message, cache_busted_url, OUTPUT_NAME)
     print(f"Sent (via {cache_busted_url}). {len(quakes)} quakes, {len(volcanoes)} volcanoes plotted.")
 
 
