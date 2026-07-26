@@ -7,6 +7,9 @@ on:
     - cron: "5 11 * * *"
   workflow_dispatch: {}
 
+permissions:
+  contents: write
+
 jobs:
   run:
     runs-on: ubuntu-latest
@@ -16,6 +19,9 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -r requirements.txt
+      # daily_map.py commits+pushes docs/daily_map.png itself and waits
+      # for GitHub Pages to serve it before sending the notification --
+      # see commit_and_push_map()/wait_until_live() in the script.
       - run: python daily_map.py
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}

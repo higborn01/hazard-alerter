@@ -5,6 +5,9 @@ Single-shot script meant to run once a day at 7am US Eastern via GitHub
 Actions -- this isn't deduplicated against quake_alert.py/volcano_alert.py's
 state, it's just a snapshot report of "today so far."
 """
+import os
+import subprocess
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -39,7 +42,11 @@ VOLCANO_FEED_URL = "https://volcanoes.usgs.gov/hans-public/api/volcano/getElevat
 VOLCANO_DETAIL_URL = "https://volcanoes.usgs.gov/hans-public/api/volcano/getVolcano/{vnum}"
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-MAP_FILE = SCRIPT_DIR / "daily_map.png"
+DOCS_DIR = SCRIPT_DIR / "docs"
+MAP_FILE = DOCS_DIR / "daily_map.png"
+# GitHub Pages, serving the docs/ folder of this repo -- gives the map
+# a permanent URL instead of ntfy's upload path, which expires after 3h.
+MAP_PAGES_URL = "https://higborn01.github.io/hazard-alerter/daily_map.png"
 
 VOLCANO_MARKER_COLOR = {"GREEN": "green", "YELLOW": "gold", "ORANGE": "orange", "RED": "red"}
 
@@ -164,18 +171,64 @@ def build_map(quakes, volcanoes):
     return fig
 
 
+def run_git(*args):
+    subprocess.run(["git", *args], cwd=SCRIPT_DIR, check=True)
+
+
+def commit_and_push_map():
+    """Push docs/daily_map.png so GitHub Pages actually has it before we
+    tell ntfy where to find it -- otherwise ntfy tries to prefetch the
+    attachment immediately and shows "download failed" on a 404."""
+    run_git("add", str(MAP_FILE))
+    staged = subprocess.run(["git", "diff", "--staged", "--quiet"], cwd=SCRIPT_DIR)
+    if staged.returncode == 0:
+        print("No change to the map image, nothing to push.")
+        return
+    # GitHub Actions checkouts have no git identity configured. Local
+    # runs already have one set on this repo (left alone here).
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        run_git("config", "user.name", "github-actions[bot]")
+        run_git("config", "user.email", "github-actions[bot]@users.noreply.github.com")
+    run_git("commit", "-m", "Update daily map image")
+    run_git("pull", "--rebase", "origin", "main")
+    run_git("push")
+
+
+def wait_until_live(url, timeout=90):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            if requests.head(url, timeout=10).status_code == 200:
+                return True
+        except requests.RequestException:
+            pass
+        time.sleep(5)
+    return False
+
+
 def main():
     since_utc = local_midnight_utc()
     quakes = fetch_quakes(since_utc)
     volcanoes = fetch_volcanoes()
 
     fig = build_map(quakes, volcanoes)
+    DOCS_DIR.mkdir(exist_ok=True)
     fig.write_image(str(MAP_FILE), width=1400, height=800, scale=2)
+
+    commit_and_push_map()
+
+    # Cache-bust the query string so phones/ntfy don't show a stale
+    # cached copy of yesterday's image at this same URL.
+    cache_busted_url = f"{MAP_PAGES_URL}?t={int(since_utc.timestamp())}"
+    if not wait_until_live(MAP_PAGES_URL):
+        print("Warning: Pages didn't confirm the new image within the timeout; notifying anyway.")
+    else:
+        print("Confirmed the map is live on GitHub Pages.")
 
     induced_count = sum(1 for q in quakes if q["possibly_induced"])
     message = f"{len(quakes)} quakes (M{MIN_MAGNITUDE}+, {induced_count} possibly induced) and {len(volcanoes)} elevated volcanoes since midnight."
-    notify.send_file("Daily hazard map", message, MAP_FILE)
-    print(f"Saved {MAP_FILE} and sent. {len(quakes)} quakes, {len(volcanoes)} volcanoes plotted.")
+    notify.send_url_attachment("Daily hazard map", message, cache_busted_url, "daily_map.png")
+    print(f"Sent (via {cache_busted_url}). {len(quakes)} quakes, {len(volcanoes)} volcanoes plotted.")
 
 
 if __name__ == "__main__":
