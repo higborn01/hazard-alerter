@@ -16,8 +16,8 @@
   },
   "332010": {
     "name": "Kilauea",
-    "color": "ORANGE",
-    "level": "WATCH"
+    "color": "YELLOW",
+    "level": "ADVISORY"
   },
   "284141": {
     "name": "Ahyi Seamount",
