@@ -4,6 +4,7 @@ National Weather Service's free public API (no key required).
 Single-shot script meant to run once a day at 7am via Task Scheduler.
 No dedup/state needed -- it's just "today's forecast," sent once.
 """
+import os
 import textwrap
 from io import BytesIO
 from pathlib import Path
@@ -17,8 +18,20 @@ import notify
 # to contact the operator -- not an API key, just good-citizen practice.
 HEADERS = {"User-Agent": "earthquake-weather-alerter (jsalerno13579@gmail.com)"}
 
+# The scheduled 7am run has no phone to ask, so it always uses the fixed
+# NJ coordinates below. A manually-triggered run (the iPhone Shortcut)
+# can pass PHONE_LAT/PHONE_LON -- when present, those replace the NJ
+# slot with wherever the phone actually is. Sarasota is always fixed.
+PHONE_LAT = os.environ.get("PHONE_LAT", "").strip()
+PHONE_LON = os.environ.get("PHONE_LON", "").strip()
+
+if PHONE_LAT and PHONE_LON:
+    first_label, first_coords = "Current Location", (float(PHONE_LAT), float(PHONE_LON))
+else:
+    first_label, first_coords = "Matawan/07747, NJ", (40.4109, -74.238)
+
 LOCATIONS = {
-    "Matawan/07747, NJ": (40.4109, -74.238),
+    first_label: first_coords,
     "Sarasota/SRQ, FL": (27.3954, -82.5544),
 }
 
