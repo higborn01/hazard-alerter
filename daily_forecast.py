@@ -19,40 +19,26 @@ import notify
 HEADERS = {"User-Agent": "earthquake-weather-alerter (jsalerno13579@gmail.com)"}
 
 # The scheduled 7am run has no phone to ask, so it always uses the fixed
-# NJ coordinates below. A manually-triggered run (the iPhone Shortcut)
-# can pass PHONE_LAT/PHONE_LON -- when present, those replace the NJ
-# slot with wherever the phone actually is. Sarasota is always fixed.
-PHONE_LAT = os.environ.get("PHONE_LAT", "").strip()
-PHONE_LON = os.environ.get("PHONE_LON", "").strip()
+# NJ zip below. A manually-triggered run (the iPhone Shortcut) can pass
+# PHONE_ZIP -- when present, it replaces the NJ slot with wherever the
+# phone actually is (iOS reverse-geocodes the phone's GPS to a zip code
+# on-device before sending it). Sarasota is always fixed.
+PHONE_ZIP = os.environ.get("PHONE_ZIP", "").strip()
 
 
-def reverse_geocode_label(lat, lon):
-    """City + zip for a lat/lon, via Nominatim (OpenStreetMap, free, no
-    key). Best-effort -- falls back to a generic label if it fails,
-    since a missing label shouldn't stop the forecast from sending."""
-    try:
-        resp = requests.get(
-            "https://nominatim.openstreetmap.org/reverse",
-            params={"lat": lat, "lon": lon, "format": "json", "zoom": 18},
-            headers={"User-Agent": HEADERS["User-Agent"]},
-            timeout=10,
-        )
-        resp.raise_for_status()
-        address = resp.json().get("address", {})
-        postcode = address.get("postcode")
-        city = address.get("city") or address.get("town") or address.get("village")
-        if city and postcode:
-            return f"{city}, {postcode}"
-        if postcode:
-            return postcode
-    except requests.RequestException:
-        pass
-    return "Current Location"
+def geocode_zip(zip_code):
+    """zip -> (lat, lon, label), via zippopotam.us (free, no key)."""
+    resp = requests.get(f"http://api.zippopotam.us/us/{zip_code}", timeout=10)
+    resp.raise_for_status()
+    place = resp.json()["places"][0]
+    lat, lon = float(place["latitude"]), float(place["longitude"])
+    label = f"{place['place name']}, {zip_code}"
+    return lat, lon, label
 
 
-if PHONE_LAT and PHONE_LON:
-    first_coords = (float(PHONE_LAT), float(PHONE_LON))
-    first_label = reverse_geocode_label(*first_coords)
+if PHONE_ZIP:
+    lat, lon, first_label = geocode_zip(PHONE_ZIP)
+    first_coords = (lat, lon)
 else:
     first_label, first_coords = "Matawan/07747, NJ", (40.4109, -74.238)
 

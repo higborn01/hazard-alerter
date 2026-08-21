@@ -6,12 +6,8 @@ on:
     - cron: "0 11 * * *"
   workflow_dispatch:
     inputs:
-      latitude:
-        description: "Phone's current latitude (optional -- replaces the NJ slot)"
-        required: false
-        type: string
-      longitude:
-        description: "Phone's current longitude (optional -- replaces the NJ slot)"
+      zipcode:
+        description: "Phone's current zip code (optional -- replaces the NJ slot)"
         required: false
         type: string
 
@@ -30,8 +26,7 @@ jobs:
       - run: python daily_forecast.py
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
-          PHONE_LAT: ${{ github.event.inputs.latitude }}
-          PHONE_LON: ${{ github.event.inputs.longitude }}
+          PHONE_ZIP: ${{ github.event.inputs.zipcode }}
       # Only when manually triggered (the iPhone Shortcut) -- not on the
       # 7am cron schedule, which already gets its own since-midnight map
       # from daily_map.yml. Keeps the automatic morning notifications
