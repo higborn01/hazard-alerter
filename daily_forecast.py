@@ -25,8 +25,34 @@ HEADERS = {"User-Agent": "earthquake-weather-alerter (jsalerno13579@gmail.com)"}
 PHONE_LAT = os.environ.get("PHONE_LAT", "").strip()
 PHONE_LON = os.environ.get("PHONE_LON", "").strip()
 
+
+def reverse_geocode_label(lat, lon):
+    """City + zip for a lat/lon, via Nominatim (OpenStreetMap, free, no
+    key). Best-effort -- falls back to a generic label if it fails,
+    since a missing label shouldn't stop the forecast from sending."""
+    try:
+        resp = requests.get(
+            "https://nominatim.openstreetmap.org/reverse",
+            params={"lat": lat, "lon": lon, "format": "json", "zoom": 18},
+            headers={"User-Agent": HEADERS["User-Agent"]},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        address = resp.json().get("address", {})
+        postcode = address.get("postcode")
+        city = address.get("city") or address.get("town") or address.get("village")
+        if city and postcode:
+            return f"{city}, {postcode}"
+        if postcode:
+            return postcode
+    except requests.RequestException:
+        pass
+    return "Current Location"
+
+
 if PHONE_LAT and PHONE_LON:
-    first_label, first_coords = "Current Location", (float(PHONE_LAT), float(PHONE_LON))
+    first_coords = (float(PHONE_LAT), float(PHONE_LON))
+    first_label = reverse_geocode_label(*first_coords)
 else:
     first_label, first_coords = "Matawan/07747, NJ", (40.4109, -74.238)
 
