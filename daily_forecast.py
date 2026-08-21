@@ -4,6 +4,7 @@ National Weather Service's free public API (no key required).
 Single-shot script meant to run once a day at 7am via Task Scheduler.
 No dedup/state needed -- it's just "today's forecast," sent once.
 """
+import math
 import os
 import textwrap
 from io import BytesIO
@@ -18,11 +19,16 @@ import notify
 # to contact the operator -- not an API key, just good-citizen practice.
 HEADERS = {"User-Agent": "earthquake-weather-alerter (jsalerno13579@gmail.com)"}
 
-# The scheduled 7am run has no phone to ask, so it always uses the fixed
-# NJ zip below. A manually-triggered run (the iPhone Shortcut) can pass
-# PHONE_ZIP -- when present, it replaces the NJ slot with wherever the
-# phone actually is (iOS reverse-geocodes the phone's GPS to a zip code
-# on-device before sending it). Sarasota is always fixed.
+NJ_LABEL, NJ_COORDS = "Matawan/07747, NJ", (40.4109, -74.238)
+FL_LABEL, FL_COORDS = "Sarasota/SRQ, FL", (27.3954, -82.5544)
+NEARBY_RADIUS_MILES = 25
+
+# The scheduled 7am run has no phone to ask, so it always uses just the
+# two fixed locations. A manually-triggered run (the iPhone Shortcut)
+# can pass PHONE_ZIP -- when present, the phone's current location is
+# added as a THIRD entry, unless it's already within NEARBY_RADIUS_MILES
+# of NJ or FL, in which case that would just be a near-duplicate and the
+# two fixed locations are shown alone.
 PHONE_ZIP = os.environ.get("PHONE_ZIP", "").strip()
 
 
@@ -36,16 +42,26 @@ def geocode_zip(zip_code):
     return lat, lon, label
 
 
-if PHONE_ZIP:
-    lat, lon, first_label = geocode_zip(PHONE_ZIP)
-    first_coords = (lat, lon)
-else:
-    first_label, first_coords = "Matawan/07747, NJ", (40.4109, -74.238)
+def miles_between(coord1, coord2):
+    lat1, lon1 = coord1
+    lat2, lon2 = coord2
+    earth_radius_miles = 3958.8
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+    return 2 * earth_radius_miles * math.asin(math.sqrt(a))
 
-LOCATIONS = {
-    first_label: first_coords,
-    "Sarasota/SRQ, FL": (27.3954, -82.5544),
-}
+
+LOCATIONS = {NJ_LABEL: NJ_COORDS, FL_LABEL: FL_COORDS}
+
+if PHONE_ZIP:
+    phone_lat, phone_lon, phone_label = geocode_zip(PHONE_ZIP)
+    phone_coords = (phone_lat, phone_lon)
+    near_nj = miles_between(phone_coords, NJ_COORDS) <= NEARBY_RADIUS_MILES
+    near_fl = miles_between(phone_coords, FL_COORDS) <= NEARBY_RADIUS_MILES
+    if not near_nj and not near_fl:
+        LOCATIONS = {phone_label: phone_coords, NJ_LABEL: NJ_COORDS, FL_LABEL: FL_COORDS}
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 GRAPHIC_FILE = SCRIPT_DIR / "daily_forecast.png"
