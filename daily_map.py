@@ -205,7 +205,22 @@ def commit_and_push_map():
         run_git("config", "user.name", "github-actions[bot]")
         run_git("config", "user.email", "github-actions[bot]@users.noreply.github.com")
     run_git("commit", "-m", "Update daily map image")
-    run_git("pull", "--rebase", "origin", "main")
+
+    pull = subprocess.run(["git", "pull", "--rebase", "origin", "main"], cwd=SCRIPT_DIR)
+    if pull.returncode != 0:
+        # Two runs regenerating the same image at nearly the same time
+        # (e.g. the button tapped twice, or this workflow's own two
+        # invocations overlapping) can't be auto-merged -- it's a binary
+        # file, and there's nothing meaningful to merge anyway. Just
+        # keep this run's version and continue the rebase.
+        subprocess.run(["git", "checkout", "--ours", str(MAP_FILE)], cwd=SCRIPT_DIR, check=True)
+        run_git("add", str(MAP_FILE))
+        continue_env = {**os.environ, "GIT_EDITOR": "true"}
+        resumed = subprocess.run(["git", "rebase", "--continue"], cwd=SCRIPT_DIR, env=continue_env)
+        if resumed.returncode != 0:
+            run_git("rebase", "--abort")
+            raise RuntimeError("Could not resolve a map image push conflict")
+
     run_git("push")
 
 
