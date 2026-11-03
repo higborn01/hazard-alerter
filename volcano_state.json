@@ -4,15 +4,10 @@
     "color": "ORANGE",
     "level": "WATCH"
   },
-  "311360": {
-    "name": "Shishaldin",
-    "color": "YELLOW",
-    "level": "ADVISORY"
-  },
   "332010": {
     "name": "Kilauea",
-    "color": "YELLOW",
-    "level": "ADVISORY"
+    "color": "ORANGE",
+    "level": "WATCH"
   },
   "284141": {
     "name": "Ahyi Seamount",
