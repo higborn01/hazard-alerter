@@ -128,10 +128,21 @@ def main():
     sections = []
     graphic_entries = []
     for name, (lat, lon) in LOCATIONS.items():
-        periods = fetch_forecast(lat, lon)
+        try:
+            periods = fetch_forecast(lat, lon)
+        except requests.exceptions.RequestException as exc:
+            # One bad grid point (e.g. a coastal point NWS has no active
+            # forecast for) shouldn't take down the whole notification --
+            # skip it and still send what did come through.
+            print(f"Skipping {name}: forecast fetch failed ({exc})")
+            continue
         sections.append(summarize(name, periods))
         graphic_entries.append((name, periods[0]))
         print(f"Fetched forecast for {name}")
+
+    if not graphic_entries:
+        print("No forecasts fetched successfully; nothing to send.")
+        return
 
     build_graphic(graphic_entries)
 
