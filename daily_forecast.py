@@ -81,6 +81,34 @@ def fetch_forecast(lat, lon):
     return forecast.json()["properties"]["periods"]
 
 
+# Degrees to nudge outward when a grid cell has no forecast loaded yet --
+# a known, usually-transient NWS API gap (see
+# github.com/weather-gov/api/discussions/707 and /720) that's more common
+# right at the coast. ~0.01 deg is roughly 0.7 miles; checked in all 8
+# compass directions at each radius before giving up.
+FALLBACK_RADII_DEG = (0.01, 0.02, 0.05)
+FALLBACK_DIRECTIONS = ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1))
+
+
+def fetch_forecast_with_fallback(name, lat, lon):
+    try:
+        return fetch_forecast(lat, lon)
+    except requests.exceptions.RequestException as exc:
+        last_exc = exc
+
+    for radius in FALLBACK_RADII_DEG:
+        for dlat, dlon in FALLBACK_DIRECTIONS:
+            try:
+                periods = fetch_forecast(lat + dlat * radius, lon + dlon * radius)
+            except requests.exceptions.RequestException as exc:
+                last_exc = exc
+                continue
+            print(f"{name}: original grid cell had no forecast; used a point ~{radius * 69:.1f}mi away instead")
+            return periods
+
+    raise last_exc
+
+
 def summarize(name, periods):
     lines = [name]
     for period in periods[:2]:
@@ -129,11 +157,11 @@ def main():
     graphic_entries = []
     for name, (lat, lon) in LOCATIONS.items():
         try:
-            periods = fetch_forecast(lat, lon)
+            periods = fetch_forecast_with_fallback(name, lat, lon)
         except requests.exceptions.RequestException as exc:
-            # One bad grid point (e.g. a coastal point NWS has no active
-            # forecast for) shouldn't take down the whole notification --
-            # skip it and still send what did come through.
+            # Even nearby points had no forecast loaded -- shouldn't take
+            # down the whole notification. Skip it and still send what
+            # did come through.
             print(f"Skipping {name}: forecast fetch failed ({exc})")
             continue
         sections.append(summarize(name, periods))
